@@ -1,0 +1,49 @@
+Explores and collects data on n-D to 1-D (n>1) mappings and core allocations.
+
+EXPERIMENT BATCH
+dimension
+set of point_counts (eg [10, 100, 1000])
+set of core_counts (eg [100, 1000, 10000])
+set of mappings (eg [hilbert, z-order])
+
+EXPERIMENT
+hypercube
+  dimension d
+  points p[]
+
+map
+  hilbert/zorder/?
+
+linearization
+  1-D order
+
+parallel machine
+  cores n
+
+metrics
+
+data
+  - parameter settings (dimension, points, cores, map...r, k)
+  - pxp distance matrix
+  Initial measurements:
+  - each particle: avg dist to k nearest neighbors
+  - each particle: list of near neighbors within distance r
+  1-D Map measurements:
+  - each particle: percentage of k nearest neighbors within k steps in 1-D ordering.
+  - each particle: percentage of near neighbors within <# of near neighbors> steps in 1-D ordering.
+  Parallel allocation measurements:
+  - each particle: percentage of k nearest neighbors that ended up on the same core.
+  - each particle: percentage of near neighbors that ended up on the same core.
+
+
+
+The way a batch is executed, though,
+the same hypercube is used. So, the
+first num of points are placed (say 10), distances measured.
+and then a mapping (say hilbert) is performed, metrics
+taken, then the parallel allocation for
+the first num of cores (say 100) is performed.
+Then for the second num of cores (say 1000). Etc.
+Then the next mapping (say z-order) is performed,
+metrics taken, then the parallel allocation, more metrics, etc.
+Then additional points are placed, repeat.
