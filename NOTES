@@ -39,11 +39,11 @@ data
 
 The way a batch is executed, though,
 the same hypercube is used. So, the
-first num of points are placed (say 10), distances measured.
+first num of points are placed (say 10), distances measured,
 and then a mapping (say hilbert) is performed, metrics
 taken, then the parallel allocation for
 the first num of cores (say 100) is performed.
 Then for the second num of cores (say 1000). Etc.
 Then the next mapping (say z-order) is performed,
 metrics taken, then the parallel allocation, more metrics, etc.
-Then additional points are placed, repeat.
+Then additional points are placed to take it up to the next val (say 100), repeat.
