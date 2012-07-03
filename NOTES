@@ -5,6 +5,8 @@ dimension
 set of point_counts (eg [10, 100, 1000])
 set of core_counts (eg [100, 1000, 10000])
 set of mappings (eg [hilbert, z-order])
+k nearest neighbor counts (eg [2, 3])
+nearness neighborhoods (eg [1, 2]) (units?)
 
 EXPERIMENT
 hypercube
@@ -34,7 +36,7 @@ data
   Parallel allocation measurements:
   - each particle: percentage of k nearest neighbors that ended up on the same core.
   - each particle: percentage of near neighbors that ended up on the same core.
-
+  - num of diff cores
 
 
 The way a batch is executed, though,
