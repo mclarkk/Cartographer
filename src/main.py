@@ -141,16 +141,5 @@ K-Nearest-Neighbor counts: {6}
 Nearness neighborhoods: {7}
 ************************************\n""".format(hypercube_bound, dimension, mappings, order, point_counts, core_counts, k_nearest_neighbor_counts, nearness_neighborhoods, verbosity)
 
-hypercube_bound = 50.0 #This shouldn't have an effect on outcome, but what if it does?
-order = 8 #Does this affect the outcome? How should I determine this?
-dimension = 2
-point_counts = [5] # [10, 100]
-core_counts = [5, 10]
-mappings = ['hilbert', 'zorder']
-k_nearest_neighbor_counts = [2, 3]
-nearness_neighborhoods = [1, 2]
-verbosity = 1
-
-
 if __name__ == "__main__":
   main()
