@@ -18,7 +18,7 @@ core_counts = [5, 10]
 mappings = ['hilbert', 'zorder']
 k_nearest_neighbor_counts = [2, 3]
 nearness_neighborhoods = [1, 2]
-verbosity = 1
+verbosity = 2
 
 # Data structures
 # Points are actually indices
@@ -67,7 +67,7 @@ def main():
 			print "Coordinates:"
 			for c in enumerate(coordinates):
 				print c
-		if verbosity > 0:
+		if verbosity > 1:
 			print "\nDistance matrix:"
 			printf_array(2, [""], distance_matrix) # TEST
 			print
