@@ -13,7 +13,7 @@ from scurve import zorder #
 hypercube_bound = 50.0 #This shouldn't have an effect on outcome, but what if it does?
 order = 8 #Does this affect the outcome? How should I determine this?
 dimension = 2
-point_counts = [5] # [10, 100]
+point_counts = [5] # [10, 100] #Point counts should be higher than core counts
 core_counts = [5, 10]
 mappings = ['hilbert', 'zorder']
 k_nearest_neighbor_counts = [2, 3]
@@ -43,15 +43,23 @@ def main():
 
 	# sort point counts.
 	point_counts.sort()
-	max_pc = point_counts[len(point_counts)-1]
+	# sort nearness ranges and knn counts
+	k_nearest_neighbor_counts.sort()
+	nearness_neighborhoods.sort()
+	max_pc = point_counts[-1]
+	max_knnc = k_nearest_neighbor_counts[-1]
 	# initialize distance matrix
 	distance_matrix = [[0 for j in xrange(max_pc)] for i in xrange(max_pc)]
+	# initialize nearest neighbors
+	nearest_neighbors = [[[0 for k in xrange(len(k_nearest_neighbor_counts))] for j in xrange(len(max_pc))] for i in xrange(len(point_counts))]
+	# initialize near neighbors
+	near_neighbors = [[[0 for k in xrange(len(nearness_neighborhoods))] for j in xrange(len(max_pc))] for i in xrange(len(point_counts))]
 
 	# LOOP: for each point count
 	for point_count in point_counts:
 	# generate point_count points (or add to existing), and fill in distance matrix as you go along.
 		for i in range(point_count):
-			xcoord = random.uniform(-hypercube_bound, hypercube_bound) 
+			xcoord = random.uniform(-hypercube_bound, hypercube_bound) #try diff distributions? 
 			ycoord = random.uniform(-hypercube_bound, hypercube_bound) 
 			coordinates.append((xcoord, ycoord))
 			# get the discretized coordinate. Will write algorithm later, hack for now.
@@ -72,11 +80,14 @@ def main():
 			printf_array(2, [""], distance_matrix) # TEST
 			print
 
-		# LOOP: for each nearness_range
-		#   Get ordered list of near neighbors
-		# END
-		# LOOP: for each nearest_neighbor_count
-		#   Get ordered list of nearest neighbors
+		for i in range(point_count):
+			dist_to = distance_matrix[i] #selects row of matrix
+			# Get lists of near neighbors
+			for radius in nearness_ranges:
+				near_neighbors[pc_index][i][indexof(radius)] = [p for p in range(point_count) if dist_to[p] <= radius]
+			# Get ordered list of nearest neighbors
+			
+		
 		#   metric: get avg. distance to nearest neighbors,
 		# END
 		# LOOP: for each mapping
@@ -99,7 +110,9 @@ def main():
 	#       metric: % of near ns within <# near ns> steps in 1D ordering
 	#     END
 	#     LOOP: for each core count
-	#       Divide ordering into core_count chunks
+			for core_count in core_counts:
+				# Divide ordering into core_count chunks
+				chunk_size = len(ordering_1D)/core_count
 	#       LOOP: for each nearest_neighbor counts
 	#         metric: % of knns that end up on the same core
 	#       END
