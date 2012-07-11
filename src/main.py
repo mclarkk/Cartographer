@@ -3,6 +3,9 @@
 # Description: The main method for Cartographer.
 # UGH I want to redesign so badly. This is slow and hideous - almost everything in main()?? Really?
 # I'm going to reimplement with quadtrees and do away with, say, the distance matrix.
+# Scaling is terrible right now - 2000 points is too slow, much less a million or billion.
+# Bottleneck is checking how many near neighbors ended up neighbors in 1D.
+# Can streamline. Many redundant passes are being done right now.
 # It'd be even better in C, but maybe harder to debug. Java, at least, would be faster.
 # However, those both require rewriting the hilbert curve/z-order code, writing quadtree 
 # algorithms for knn and nn metrics.
@@ -66,7 +69,7 @@ def main():
 	# LOOP: for each point count
 	for point_count in point_counts:
 	# generate point_count points (or add to existing), and fill in distance matrix as you go along.
-		print "STARTING MATRIX\n"
+		#print "STARTING MATRIX\n"
 		for i in range(point_count-prev_point_count):
 #			xcoord = random.uniform(-hypercube_bound, hypercube_bound) #try diff distributions? 
 #			ycoord = random.uniform(-hypercube_bound, hypercube_bound) 
@@ -106,7 +109,7 @@ def main():
 		# metric: get avg. distance to nearest neighbors,
 		# END
 
-		print "STARTING MAP\n"
+		#print "STARTING MAP\n"
 		# LOOP: for each mapping
 		for map in mappings:
 			try:
@@ -139,7 +142,7 @@ def main():
 				
 				# Metric: % of near neighbors (nns) within <# nns> steps of given point in 1D ordering
 				for radius in nearness_radii:
-					print "GETTING NN/POINT\n"
+					#print "GETTING NN/POINT\n"
 					sum = 0.0	
 					points_with_neighbors = 0.0
 					for point in range(point_count):
@@ -165,7 +168,7 @@ def main():
 							sum += percentage
 							points_with_neighbors += 1
 					# Metric: Average and variance of above
-					print "GETTING NN STATS\n"
+					#print "GETTING NN STATS\n"
 					if points_with_neighbors != 0:
 						average = sum/points_with_neighbors
 						variance_denom = 0.0
@@ -178,12 +181,6 @@ def main():
 						nn_conservation_1D_stats[(point_count, map, radius)] = (average, variance)
 					else:
 						nn_conservation_1D_stats[(point_count, map, radius)] = (None, None)
-				if verbosity >= 2:			
-					print "1D conservation of near neighbors:\n(point count, point, map, radius) : percentage by point\n",
-					printf_dict(nn_conservation_1D)
-				if verbosity >= 1:
-					print "Average/variance of 1D conservation of near neighbors:\n(point count, map, radius) : (average, variance)\n",
-					printf_dict(nn_conservation_1D_stats)
 
 				# LOOP: for each core count
 				for core_count in core_counts:
@@ -201,6 +198,12 @@ def main():
 			except Exception, e:
 				print e
 		prev_point_count = point_count
+	if verbosity >= 2:			
+		print "1D conservation of near neighbors:\n(point count, point, map, radius) : percentage by point\n",
+		printf_dict(nn_conservation_1D)
+	if verbosity >= 1:
+		print "Stats for 1D conservation of near neighbors:\n(point count, map, radius) : (average, variance)\n",
+		printf_dict(nn_conservation_1D_stats)
 
 
 
