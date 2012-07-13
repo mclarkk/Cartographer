@@ -18,14 +18,15 @@ from scurve import zorder #
 
 # Get batch parameters
 # These should come from a file at some point.
-hypercube_bound = 50.0 #This shouldn't have an effect on outcome, but what if it does?
-order = 16 #Does this affect the outcome? How should I determine this?
+hypercube_edge_len = 10.0 #This shouldn't have an effect on outcome, but what if it does?
+order = 64 #Does this affect the outcome? How should I determine this?
 dimension = 2
-point_counts = [100, 1000] #Point counts should be higher than core counts
+distribution = 'uniform'
+point_counts = [2000] #Point counts should be higher than core counts
 core_counts = [10, 100]
 mappings = ['hilbert', 'zorder']
 k_values = [2, 3] #for k nearest neighbor metrics
-nearness_radii = [5, 10, 20, 50] #for near neighbor metrics
+nearness_percentages = [0.5, 0.10, 0.20, 0.50] #percentage of edge_len for near neighbor metrics
 verbosity = 1
 
 # DATA STRUCTURES
@@ -35,6 +36,7 @@ coordinates = []
 # determine the curve order to use. Looks like it's quadtree time after all. 
 # Sigh. Hack it for now.
 discretized_coords = [] 
+nearness_radii = []
 #distance_matrix = [][]
 nearest_neighbors = {} #keys: (pc, point, knnc)
 near_neighbors = {} #keys: (pc, point, dist)
@@ -47,7 +49,9 @@ nn_conservation_1D_stats = {} #(point_count, mapping, radius) -> (avg, var)
 #knn_conservation_cores_stats #[][][][] # points x mappings x knncs x cc
 #nn_conservation_cores #[][][][] # points x mappings x nns x cc
 #nn_conservation_cores_stats #[][][][] # points x mappings x nns x cc
-
+#gauss parameters chosen such that 0<x<1 ~99% of the time
+gauss_mu = hypercube_edge_len/2
+gauss_sigma = (hypercube_edge_len/2)/3.0 # <x<1 ~99% of the time
 
 # Run experiment batch.
 
@@ -59,7 +63,8 @@ def main():
 	point_counts.sort()
 	# sort nearness ranges and knn counts
 	k_values.sort()
-	nearness_radii.sort()
+	nearness_percentages.sort()
+	nearness_radii = [x*hypercube_edge_len for x in nearness_percentages]
 	max_pc = point_counts[-1]
 	max_knnc = k_values[-1]
 	# initialize distance matrix
@@ -71,10 +76,16 @@ def main():
 	# generate point_count points (or add to existing), and fill in distance matrix as you go along.
 		#print "STARTING MATRIX\n"
 		for i in range(point_count-prev_point_count):
-#			xcoord = random.uniform(-hypercube_bound, hypercube_bound) #try diff distributions? 
-#			ycoord = random.uniform(-hypercube_bound, hypercube_bound) 
-			xcoord = random.gauss(0, 1) * hypercube_bound/2
-			ycoord = random.gauss(0, 1) * hypercube_bound/2
+			if distribution == 'uniform':
+				xcoord = random.uniform(0, hypercube_edge_len)
+				ycoord = random.uniform(0, hypercube_edge_len)
+			elif distribution == 'gauss':
+				xcoord = random.gauss(gauss_mu, gauss_sigma) % hypercube_edge_len
+				ycoord = random.gauss(gauss_mu, gauss_sigma) % hypercube_edge_len
+			else:
+				print 'Distribution {0} unsupported. Using uniform.\n'.format(distribution)
+				xcoord = random.uniform(0, hypercube_edge_len)
+				ycoord = random.uniform(0, hypercube_edge_len)
 			coordinates.append((xcoord, ycoord))
 			# get the discretized coordinate. Will write algorithm later, hack for now.
 			discretized_coords.append((int(round(xcoord)), int(round(ycoord))))
@@ -86,12 +97,12 @@ def main():
 				distance_matrix[i_adj][j] = dist
 				distance_matrix[j][i_adj] = dist
 			distance_matrix[i_adj][i_adj] = 0
-		if verbosity >= 2:
+		if verbosity >= 2 and point_count <= 20:
 			print "Coordinates:"
 			for c in enumerate(coordinates):
 				print c
 			print
-		if verbosity >= 4:
+		if verbosity >= 4 and point_count <= 10:
 			print 'Distance matrix ({0}x{0}):'.format(point_count)
 			printf_array(2, [""], distance_matrix) # TEST
 			print
@@ -100,8 +111,9 @@ def main():
 			dists_from = distance_matrix[point] #selects row of matrix
 			# Get lists of near neighbors
 			for radius in nearness_radii:
-				near_neighbors[(point_count, point, radius)] = [p for p in range(point_count) if dists_from[p] <= radius and p != point]
-		if verbosity >= 3:
+				percent_radius = radius/hypercube_edge_len
+				near_neighbors[(point_count, point, percent_radius)] = [p for p in range(point_count) if dists_from[p] <= radius and p != point]
+		if verbosity >= 3 and point_count <= 20:
 			print "Near neighbors (point count, point, radius):\n",
 			printf_dict(near_neighbors)
 		# Get ordered list of nearest neighbors
@@ -119,19 +131,19 @@ def main():
 					# Sort into 1D order by hilbert distance (called hilbert_index above). 
 					# Each element is of form (hilbert_distance, coordinate_index) 
 					images_1D.sort()
-					if verbosity >= 3:
+					if verbosity >= 3 and point_count <= 20:
 						print "Hilbert images (Hilbert distance, particle #):\n", images_1D, "\n"
 					ordering_1D = [images_1D[i][1] for i in range(len(images_1D))]
-					if verbosity >= 2:
+					if verbosity >= 2 and point_count < 20:
 						print "Hilbert ordering (by particle #):\n", ordering_1D, "\n"
 				elif map == 'zorder':
 					zmap = zorder.ZOrder(dimension, order) #must find a way to determine # of bits
 					images_1D = [(zmap.index(list(c[1])), c[0]) for c in enumerate(discretized_coords)]
 					images_1D.sort()
-					if verbosity >= 3:
+					if verbosity >= 3 and point_count <= 20:
 						print "Z-curve images (Z-curve distance, particle #):\n", images_1D, "\n"
 					ordering_1D = [images_1D[i][1] for i in range(len(images_1D))]
-					if verbosity >= 2:
+					if verbosity >= 2 and point_count < 20:
 						print "Z-ordering (by particle #):\n", ordering_1D, "\n"
 				else:
 					raise Exception("Map '{0}' not supported.\n".format(map))
@@ -145,14 +157,15 @@ def main():
 					#print "GETTING NN/POINT\n"
 					sum = 0.0	
 					points_with_neighbors = 0.0
+					percent_radius = radius/hypercube_edge_len
 					for point in range(point_count):
 						index_p = ordering_1D.index(point)
 						#get near neighbors
-						nns = near_neighbors[(point_count, point, radius)]
+						nns = near_neighbors[(point_count, point, percent_radius)]
 						nn_count = len(nns)
 						if nn_count == 0:
-							nn_conservation_1D[(point_count, point, map, radius)] = None
-							nn_conservation_1D_stats[(point_count, map, radius)] = None
+							nn_conservation_1D[(point_count, point, map, percent_radius)] = None
+							nn_conservation_1D_stats[(point_count, map, percent_radius)] = None
 						else:
 							#see how many near neighbors are within nns_count distance in 1D
 							nn_count_1D = 0.0
@@ -164,7 +177,7 @@ def main():
 								if dist <= nn_count:
 									nn_count_1D += 1
 							percentage = nn_count_1D/nn_count
-							nn_conservation_1D[(point_count, point, map, radius)] = percentage
+							nn_conservation_1D[(point_count, point, map, percent_radius)] = percentage
 							sum += percentage
 							points_with_neighbors += 1
 					# Metric: Average and variance of above
@@ -173,14 +186,14 @@ def main():
 						average = sum/points_with_neighbors
 						variance_denom = 0.0
 						for point in range(point_count):
-							percentage = nn_conservation_1D[(point_count, point, map, radius)]				
+							percentage = nn_conservation_1D[(point_count, point, map, percent_radius)]				
 							if percentage != None:
 								difference = average - percentage
 								variance_denom += (difference*difference)
 						variance = variance_denom/points_with_neighbors
-						nn_conservation_1D_stats[(point_count, map, radius)] = (average, variance)
+						nn_conservation_1D_stats[(point_count, map, percent_radius)] = (average, variance)
 					else:
-						nn_conservation_1D_stats[(point_count, map, radius)] = (None, None)
+						nn_conservation_1D_stats[(point_count, map, percent_radius)] = (None, None)
 
 				# LOOP: for each core count
 				for core_count in core_counts:
@@ -198,7 +211,7 @@ def main():
 			except Exception, e:
 				print e
 		prev_point_count = point_count
-	if verbosity >= 2:			
+	if verbosity >= 2 and point_count <= 20:			
 		print "1D conservation of near neighbors:\n(point count, point, map, radius) : percentage by point\n",
 		printf_dict(nn_conservation_1D)
 	if verbosity >= 1:
@@ -232,16 +245,17 @@ def printf_dict(d):
 
 def print_parameters():
 	print """Report verbosity: {8}\n
-************ PARAMETERS ************
-Hypercube boundaries: {0}
+*************** PARAMETERS ***************
+Hypercube boundary length: {0}
 Hypercube dimension: {1}
 Curves: {2}
 Curve order: {3}
 Point counts: {4}
+Point distribution: {9}
 Core counts: {5}
 K-Nearest-Neighbor counts: {6}
 Nearness neighborhoods: {7}
-************************************\n""".format(hypercube_bound, dimension, mappings, order, point_counts, core_counts, k_values, nearness_radii, verbosity)
+******************************************\n""".format(hypercube_edge_len, dimension, mappings, order, point_counts, core_counts, k_values, nearness_percentages, verbosity, distribution)
 
 if __name__ == "__main__":
   main()
