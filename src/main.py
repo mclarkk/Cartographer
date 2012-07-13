@@ -22,7 +22,7 @@ hypercube_edge_len = 10.0 #This shouldn't have an effect on outcome, but what if
 order = 64 #Does this affect the outcome? How should I determine this?
 dimension = 2
 distribution = 'uniform'
-point_counts = [2000] #Point counts should be higher than core counts
+point_counts = [100] #Point counts should be higher than core counts
 core_counts = [10, 100]
 mappings = ['hilbert', 'zorder']
 k_values = [2, 3] #for k nearest neighbor metrics
@@ -52,6 +52,9 @@ nn_conservation_1D_stats = {} #(point_count, mapping, radius) -> (avg, var)
 #gauss parameters chosen such that 0<x<1 ~99% of the time
 gauss_mu = hypercube_edge_len/2
 gauss_sigma = (hypercube_edge_len/2)/3.0 # <x<1 ~99% of the time
+
+MAX_DISPLAY = 10 #For things that take up lots of space (like matrix)
+MAX_DISPLAY_C = 20 #For compact lists (neighbors, images, ordering, etc)
 
 # Run experiment batch.
 
@@ -97,12 +100,12 @@ def main():
 				distance_matrix[i_adj][j] = dist
 				distance_matrix[j][i_adj] = dist
 			distance_matrix[i_adj][i_adj] = 0
-		if verbosity >= 2 and point_count <= 20:
+		if verbosity >= 2 and point_count <= MAX_DISPLAY_C:
 			print "Coordinates:"
 			for c in enumerate(coordinates):
 				print c
 			print
-		if verbosity >= 4 and point_count <= 10:
+		if verbosity >= 4 and point_count <= MAX_DISPLAY:
 			print 'Distance matrix ({0}x{0}):'.format(point_count)
 			printf_array(2, [""], distance_matrix) # TEST
 			print
@@ -113,7 +116,7 @@ def main():
 			for radius in nearness_radii:
 				percent_radius = radius/hypercube_edge_len
 				near_neighbors[(point_count, point, percent_radius)] = [p for p in range(point_count) if dists_from[p] <= radius and p != point]
-		if verbosity >= 3 and point_count <= 20:
+		if verbosity >= 3 and point_count <= MAX_DISPLAY_C:
 			print "Near neighbors (point count, point, radius):\n",
 			printf_dict(near_neighbors)
 		# Get ordered list of nearest neighbors
@@ -131,7 +134,7 @@ def main():
 					# Sort into 1D order by hilbert distance (called hilbert_index above). 
 					# Each element is of form (hilbert_distance, coordinate_index) 
 					images_1D.sort()
-					if verbosity >= 3 and point_count <= 20:
+					if verbosity >= 3 and point_count <= MAX_DISPLAY_C:
 						print "Hilbert images (Hilbert distance, particle #):\n", images_1D, "\n"
 					ordering_1D = [images_1D[i][1] for i in range(len(images_1D))]
 					if verbosity >= 2 and point_count < 20:
@@ -140,7 +143,7 @@ def main():
 					zmap = zorder.ZOrder(dimension, order) #must find a way to determine # of bits
 					images_1D = [(zmap.index(list(c[1])), c[0]) for c in enumerate(discretized_coords)]
 					images_1D.sort()
-					if verbosity >= 3 and point_count <= 20:
+					if verbosity >= 3 and point_count <= MAX_DISPLAY_C:
 						print "Z-curve images (Z-curve distance, particle #):\n", images_1D, "\n"
 					ordering_1D = [images_1D[i][1] for i in range(len(images_1D))]
 					if verbosity >= 2 and point_count < 20:
@@ -211,7 +214,7 @@ def main():
 			except Exception, e:
 				print e
 		prev_point_count = point_count
-	if verbosity >= 2 and point_count <= 20:			
+	if verbosity >= 2 and point_count <= MAX_DISPLAY_C:			
 		print "1D conservation of near neighbors:\n(point count, point, map, radius) : percentage by point\n",
 		printf_dict(nn_conservation_1D)
 	if verbosity >= 1:
