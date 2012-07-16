@@ -18,11 +18,11 @@ from scurve import zorder #
 
 # Get batch parameters
 # These should come from a file at some point.
-hypercube_edge_len = 10.0 #This shouldn't have an effect on outcome, but what if it does?
-order = 64 #Does this affect the outcome? How should I determine this?
-dimension = 2
+hypercube_edge_len = 1.0 #This shouldn't have an effect on outcome, but what if it does?
+order = 7 #Does this affect the outcome? How should I determine this?
+dimension = 4
 distribution = 'uniform'
-point_counts = [100] #Point counts should be higher than core counts
+point_counts = [100, 1000] #Point counts should be higher than core counts
 core_counts = [10, 100]
 mappings = ['hilbert', 'zorder']
 k_values = [2, 3] #for k nearest neighbor metrics
@@ -72,26 +72,28 @@ def main():
 	max_knnc = k_values[-1]
 	# initialize distance matrix
 	distance_matrix = [[0 for j in xrange(max_pc)] for i in xrange(max_pc)]
-	prev_point_count = 0
+        prev_point_count = 0
 
 	# LOOP: for each point count
 	for point_count in point_counts:
 	# generate point_count points (or add to existing), and fill in distance matrix as you go along.
 		#print "STARTING MATRIX\n"
 		for i in range(point_count-prev_point_count):
-			if distribution == 'uniform':
-				xcoord = random.uniform(0, hypercube_edge_len)
-				ycoord = random.uniform(0, hypercube_edge_len)
-			elif distribution == 'gauss':
-				xcoord = random.gauss(gauss_mu, gauss_sigma) % hypercube_edge_len
-				ycoord = random.gauss(gauss_mu, gauss_sigma) % hypercube_edge_len
-			else:
-				print 'Distribution {0} unsupported. Using uniform.\n'.format(distribution)
-				xcoord = random.uniform(0, hypercube_edge_len)
-				ycoord = random.uniform(0, hypercube_edge_len)
-			coordinates.append((xcoord, ycoord))
+			new_point = []
+			d_new_point = []
+			for j in range(dimension):
+				if distribution == 'uniform':
+					coord = random.uniform(0, hypercube_edge_len)
+				elif distribution == 'gauss':
+					coord = random.gauss(gauss_mu, gauss_sigma) % hypercube_edge_len
+				else:
+					print 'Distribution {0} unsupported. Using uniform.\n'.format(distribution)
+					coord = random.uniform(0, hypercube_edge_len)
+				new_point.append(coord)
+				d_new_point.append(int(round(coord*100)))
+			coordinates.append(tuple(new_point))
 			# get the discretized coordinate. Will write algorithm later, hack for now.
-			discretized_coords.append((int(round(xcoord)), int(round(ycoord))))
+			discretized_coords.append(tuple(d_new_point))
 			# fill out distance matrix as you go
 			i_adj = i + prev_point_count
 			for j in range(i_adj):
@@ -158,7 +160,8 @@ def main():
 				# Metric: % of near neighbors (nns) within <# nns> steps of given point in 1D ordering
 				for radius in nearness_radii:
 					#print "GETTING NN/POINT\n"
-					sum = 0.0	
+					p_sum = 0.0
+					n_sum = 0.0
 					points_with_neighbors = 0.0
 					percent_radius = radius/hypercube_edge_len
 					for point in range(point_count):
@@ -167,8 +170,8 @@ def main():
 						nns = near_neighbors[(point_count, point, percent_radius)]
 						nn_count = len(nns)
 						if nn_count == 0:
-							nn_conservation_1D[(point_count, point, map, percent_radius)] = None
-							nn_conservation_1D_stats[(point_count, map, percent_radius)] = None
+							nn_conservation_1D[(point_count, point, map, percent_radius)] = (0, (None))
+							nn_conservation_1D_stats[(point_count, map, percent_radius)] = (0, (None))
 						else:
 							#see how many near neighbors are within nns_count distance in 1D
 							nn_count_1D = 0.0
@@ -180,23 +183,25 @@ def main():
 								if dist <= nn_count:
 									nn_count_1D += 1
 							percentage = nn_count_1D/nn_count
-							nn_conservation_1D[(point_count, point, map, percent_radius)] = percentage
-							sum += percentage
+							nn_conservation_1D[(point_count, point, map, percent_radius)] = (nn_count, (percentage))
+							p_sum += percentage
+							n_sum += nn_count
 							points_with_neighbors += 1
 					# Metric: Average and variance of above
 					#print "GETTING NN STATS\n"
 					if points_with_neighbors != 0:
-						average = sum/points_with_neighbors
+						p_average = p_sum/points_with_neighbors
+						n_average = n_sum/points_with_neighbors
 						variance_denom = 0.0
 						for point in range(point_count):
-							percentage = nn_conservation_1D[(point_count, point, map, percent_radius)]				
+							(nn_count, (percentage)) = nn_conservation_1D[(point_count, point, map, percent_radius)]				
 							if percentage != None:
-								difference = average - percentage
+								difference = p_average - percentage
 								variance_denom += (difference*difference)
 						variance = variance_denom/points_with_neighbors
-						nn_conservation_1D_stats[(point_count, map, percent_radius)] = (average, variance)
+						nn_conservation_1D_stats[(point_count, map, percent_radius)] = (n_average, (p_average, variance))
 					else:
-						nn_conservation_1D_stats[(point_count, map, percent_radius)] = (None, None)
+						nn_conservation_1D_stats[(point_count, map, percent_radius)] = (0, (None, None))
 
 				# LOOP: for each core count
 				for core_count in core_counts:
@@ -215,10 +220,10 @@ def main():
 				print e
 		prev_point_count = point_count
 	if verbosity >= 2 and point_count <= MAX_DISPLAY_C:			
-		print "1D conservation of near neighbors:\n(point count, point, map, radius) : percentage by point\n",
+		print "1D conservation of near neighbors:\n(point count, point, map, radius) : (# of neighbors, percentage by point)\n",
 		printf_dict(nn_conservation_1D)
 	if verbosity >= 1:
-		print "Stats for 1D conservation of near neighbors:\n(point count, map, radius) : (average, variance)\n",
+		print "Stats for 1D conservation of near neighbors:\n(point count, map, radius) : (Average # of neighbors, (average, variance))\n",
 		printf_dict(nn_conservation_1D_stats)
 
 
@@ -229,8 +234,8 @@ def main():
 # Euclidean dist between n-dimensional points a and b: 
 #   sqrt((a0-b0)^2 + (a1-b1)^2 + ... + (an-bn)^2)
 def euclidean_dist(a, b):
-    return math.sqrt(math.fsum([math.pow(a[i]-b[i], 2) for i in range(len(a))]))
-    
+  return math.sqrt(math.fsum([math.pow(a[i]-b[i], 2) for i in range(len(a))]))
+
 def printf_array(dimensions, labels, array):
 	# Make sure dimensions matches # labels
 	if dimensions == 2:
