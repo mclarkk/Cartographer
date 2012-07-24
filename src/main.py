@@ -2,36 +2,41 @@
 # Date: 6/29/12
 # Description: The main method for Cartographer.
 # UGH I want to redesign so badly. This is slow and hideous - almost everything in main()?? Really?
-# I'm going to reimplement with quadtrees and do away with, say, the distance matrix.
 # Scaling is terrible right now - 2000 points is too slow, much less a million or billion.
-# Bottleneck is checking how many near neighbors ended up neighbors in 1D.
+# Bottleneck is checking how many neighbors (near or k) ended up neighbors in 1D.
 # Can streamline. Many redundant passes are being done right now.
 # It'd be even better in C, but maybe harder to debug. Java, at least, would be faster.
-# However, those both require rewriting the hilbert curve/z-order code, writing quadtree 
-# algorithms for knn and nn metrics.
+# However, those both require rewriting the hilbert curve/z-order library code, or
+# finding existing C libraries.
 
 import random
 import math
-#import pprint
-from scurve import hilbert #hilbert_point, hilbert_index
-from scurve import zorder #
+from scurve import hilbert
+from scurve import zorder
+
+
+# PARAMETERS
 
 # Get batch parameters
 # These should come from a file at some point.
 hypercube_edge_len = 1.0 #This shouldn't have an effect on outcome, but what if it does?
 order = 7 #Does this affect the outcome? How should I determine this?
-dimension = 3
+dimension = 6
 distribution = 'uniform'
 point_counts = [1000] #Point counts should be higher than core counts
 core_counts = [10, 100]
 mappings = ['hilbert', 'zorder']
-k_values = [2, 3] #for k nearest neighbor metrics
-nearness_percentages = [0.10, 0.20, 0.50] #percentage of edge_len for near neighbor metrics
-verbosity = 1
-measure_nn = True
-measure_scattered_core = True
+k_values = [100,500,999] #For k nearest neighbor metrics. Even nums are more accurate.
+nearness_percentages = [0.10, 0.20, 0.50] #Percentage of edge_len for near neighbor metrics
+verbosity = 3
+measure_nn = False
+measure_nn_core = False
+measure_knn = True
+measure_knn_core = False
+
 
 # DATA STRUCTURES
+
 # Coordinates for each point. Points are indices (implicitly).
 coordinates = []
 # Dynamically drawn grid squares containing points. This is also how we'll 
@@ -39,16 +44,14 @@ coordinates = []
 # Sigh. Hack it for now.
 discretized_coords = [] 
 nearness_radii = []
-#distance_matrix = [][]
-nearest_neighbors = {} #keys: (pc, point, knnc)
-near_neighbors = {} #keys: (pc, point, dist)
-#avg_dist_to_nearest_neighbors #[][] # points x knncs
-#knn_conservation_1D #[][][] # points x mappings x knncs
-#knn_conservation_1D_stats = {} #(point count, mapping, k value)
-nn_conservation_1D = {} #[][][] # points x mappings x nns
+k_nearest_neighbors = {} #keys: (pc, point, k)
+near_neighbors = {} #keys: (pc, point, radius)
+knn_conservation_1D = {} # points x mappings x knncs
+knn_conservation_1D_stats = {} #(point count, mapping, k value)
+nn_conservation_1D = {} # points x mappings x nns
 nn_conservation_1D_stats = {} #(point_count, mapping, radius) -> (avg, var)
-#knn_conservation_cores #[][][][] # points x mappings x knncs x cc
-#knn_conservation_cores_stats #[][][][] # points x mappings x knncs x cc
+#knn_conservation_cores = {} #[][][][] # points x mappings x knncs x cc
+#knn_conservation_cores_stats = {} #[][][][] # points x mappings x knncs x cc
 #nn_conservation_cores #[][][][] # points x mappings x nns x cc
 #nn_conservation_cores_stats #[][][][] # points x mappings x nns x cc
 #gauss parameters chosen such that 0<x<1 ~99% of the time
@@ -58,7 +61,8 @@ gauss_sigma = (hypercube_edge_len/2)/3.0 # <x<1 ~99% of the time
 MAX_DISPLAY = 10 #For things that take up lots of space (like matrix)
 MAX_DISPLAY_C = 20 #For compact lists (neighbors, images, ordering, etc)
 
-# Run experiment batch.
+
+# RUN EXPERIMENT
 
 def main():
 	if verbosity >= 1:
@@ -120,14 +124,18 @@ def main():
 			for radius in nearness_radii:
 				percent_radius = radius/hypercube_edge_len
 				near_neighbors[(point_count, point, percent_radius)] = [p for p in range(point_count) if dists_from[p] <= radius and p != point]
-		if verbosity >= 3 and point_count <= MAX_DISPLAY_C:
+			# Get lists of k-nearest neighbors
+			dist_point_pairs = [(dists_from[i], i) for i in xrange(len(dists_from))]
+			dist_point_pairs.sort()
+			for k in k_values:
+				k_nearest_neighbors[(point_count, point, k)] = [dist_point_pairs[x+1][1] for x in xrange(k)]
+		if measure_nn and verbosity >= 3 and point_count <= MAX_DISPLAY_C:
 			print "Near neighbors (point count, point, radius):\n",
 			printf_dict(near_neighbors)
-		# Get ordered list of nearest neighbors
+		if measure_knn and verbosity >= 3 and point_count <= MAX_DISPLAY_C:
+			print "K nearest neighbors (point count, point, k):\n",
+			printf_dict(k_nearest_neighbors)
 			
-		# metric: get avg. distance to nearest neighbors,
-		# END
-
 		#print "STARTING MAP\n"
 		# LOOP: for each mapping
 		for map in mappings:
@@ -160,53 +168,52 @@ def main():
 		#     END
 				
 				# Metric: % of near neighbors (nns) within <# nns> steps of given point in 1D ordering
-				for radius in nearness_radii:
-					#print "GETTING NN/POINT\n"
-					p_sum = 0.0
-					n_sum = 0.0
-					points_with_neighbors = 0.0
-					percent_radius = radius/hypercube_edge_len
-					for point in range(point_count):
-						index_p = ordering_1D.index(point)
-						#get near neighbors
-						nns = near_neighbors[(point_count, point, percent_radius)]
-						nn_count = len(nns)
-						if nn_count == 0:
-							nn_conservation_1D[(point_count, point, map, percent_radius)] = (0, (None))
-							nn_conservation_1D_stats[(point_count, map, percent_radius)] = (0, (None))
-						else:
-							#see how many near neighbors are within nns_count distance in 1D
-							nn_count_1D = 0.0
-							for neighbor in nns:
-								index_n = ordering_1D.index(neighbor)
-								dist = math.fabs(index_p - index_n)
-
-								#is within len(nns) to point?
-								if dist <= nn_count:
-									nn_count_1D += 1
-							percentage = nn_count_1D/nn_count
-							nn_conservation_1D[(point_count, point, map, percent_radius)] = (nn_count, (percentage))
-							p_sum += percentage
-							n_sum += nn_count
-							points_with_neighbors += 1
-					# Metric: Average and variance of above
-					#print "GETTING NN STATS\n"
-					if points_with_neighbors != 0:
-						p_average = p_sum/points_with_neighbors
-						n_average = n_sum/points_with_neighbors
-						variance_denom = 0.0
+				if measure_nn:
+					for radius in nearness_radii:
+						#print "GETTING NN/POINT\n"
+						p_sum = 0.0
+						n_sum = 0.0
+						points_with_neighbors = 0.0
+						percent_radius = radius/hypercube_edge_len
 						for point in range(point_count):
-							(nn_count, (percentage)) = nn_conservation_1D[(point_count, point, map, percent_radius)]				
-							if percentage != None:
-								difference = p_average - percentage
-								variance_denom += (difference*difference)
-						variance = variance_denom/points_with_neighbors
-						nn_conservation_1D_stats[(point_count, map, percent_radius)] = (n_average, (p_average, variance))
-					else:
-						nn_conservation_1D_stats[(point_count, map, percent_radius)] = (0, (None, None))
+							index_p = ordering_1D.index(point)
+							#get near neighbors
+							nns = near_neighbors[(point_count, point, percent_radius)]
+							nn_count = len(nns)
+							if nn_count == 0:
+								nn_conservation_1D[(point_count, point, map, percent_radius)] = (0, (None))
+								nn_conservation_1D_stats[(point_count, map, percent_radius)] = (0, (None))
+							else:
+								#see how many near neighbors are within nns_count distance in 1D
+								nn_count_1D = 0.0
+								for neighbor in nns:
+									index_n = ordering_1D.index(neighbor)
+									dist = math.fabs(index_p - index_n)
+									#is within len(nns) to point?
+									if dist <= nn_count:
+										nn_count_1D += 1
+								percentage = nn_count_1D/nn_count
+								nn_conservation_1D[(point_count, point, map, percent_radius)] = (nn_count, (percentage))
+								p_sum += percentage
+								n_sum += nn_count
+								points_with_neighbors += 1
+						# Metric: Average and variance of above
+						if points_with_neighbors != 0:
+							p_average = p_sum/points_with_neighbors
+							n_average = n_sum/points_with_neighbors
+							variance_denom = 0.0
+							for point in range(point_count):
+								(nn_count, (percentage)) = nn_conservation_1D[(point_count, point, map, percent_radius)]				
+								if percentage != None:
+									difference = p_average - percentage
+									variance_numerator += (difference*difference)
+							variance = variance_numerator/points_with_neighbors
+							nn_conservation_1D_stats[(point_count, map, percent_radius)] = (n_average, (p_average, variance))
+						else:
+							nn_conservation_1D_stats[(point_count, map, percent_radius)] = (0, (None, None))
 
 				# LOOP: for each core count
-				if measure_scattered_core:
+				if measure_nn_core:
 					for core_count in core_counts:
 						# Divide ordering into core_count chunks
 						chunk_size = len(ordering_1D)/core_count
@@ -228,32 +235,62 @@ def main():
 							scc_average = sum(scattered_core_counts)/scc_denom
 							print "Average num cores/neighborhood ({4}, {0}, {1}, {3}): {2}".format(map, percent_radius, scc_average, core_count, point_count)
 
-
-
-
-
-		#       LOOP: for each nearest_neighbor counts
-		#         metric: % of knns that end up on the same core
-		#       END
-		#       LOOP: for each nearness range
-		#         metric: % of near ns that end up on the same core
-		#       END
-		#     END
-		#   END
-		# END
+				if measure_knn:
+					for k in k_values:
+						window_size = k+1
+						total_1D_sum = 0.0
+						for point in range(point_count):
+							# Get list of knns in 1D ordering
+							p_index = ordering_1D.index(point)
+							if p_index < window_size/2: #k
+								lower = 0
+								#upper = 2*k + 1
+								upper = window_size
+							elif p_index > (point_count - window_size/2): #pc - 2k
+								lower = point_count - window_size
+						#		lower = point_count - (2*k + 1)
+								upper = point_count
+							else:
+								lower = p_index-(window_size/2)
+								upper = p_index+(window_size/2) + 1
+#								lower = p_index-k
+#								upper = p_index+k+1
+							knns_1D = ordering_1D[lower:upper]
+							# Is each n-space nearest neighbor a 1D nearest neighbor?
+							knns = k_nearest_neighbors[(point_count, point, k)]
+							knn_count_1D = 0
+							for neighbor in knns:
+								the_neighbor = [n for n in knns_1D if n==neighbor]
+								knn_count_1D += len(the_neighbor)
+							knn_conservation_1D[(point_count, point, map, k)] = knn_count_1D/float(k)
+							total_1D_sum += knn_count_1D 
+						
+						# Metric: Average and variance of above
+						average = total_1D_sum/(k*point_count)
+						variance_numerator = 0.0
+						for point in range(point_count):
+							percentage = knn_conservation_1D[(point_count, point, map, k)]				
+							difference = average - percentage
+							variance_numerator += (difference*difference)
+						variance = variance_numerator/point_count
+						knn_conservation_1D_stats[(point_count, map, k)] = (average, variance)
+						
 			except Exception, e:
 				print e
 		prev_point_count = point_count
-	if verbosity >= 2 and point_count <= MAX_DISPLAY_C:			
+	if measure_nn and verbosity >= 3 and point_count <= MAX_DISPLAY_C:			
 		print "1D conservation of near neighbors:\n(point count, point, map, radius) : (# of neighbors, percentage by point)\n",
 		printf_dict(nn_conservation_1D)
-	if verbosity >= 1:
+	if measure_nn and verbosity >= 1:
 		print "Stats for 1D conservation of near neighbors:\n(point count, map, radius) : (Average # of neighbors, (average, variance))\n",
 		printf_dict(nn_conservation_1D_stats)
+	if measure_knn and verbosity >= 3 and point_count <= MAX_DISPLAY_C:
+		print "1D conservation of k nearest neighbors:\n(point count, point, map, k) : percentage by point\n",
+		printf_dict(knn_conservation_1D)
+	if measure_knn and verbosity >= 1:
+		print "Stats for 1D conservation of k nearest neighbors:\n(point count, map, k) : (average, variance)\n",
+		printf_dict(knn_conservation_1D_stats)
 
-
-
-# Dump data to file. Or print, whatever. Should probably have a verbosity flag.
 
 # It is assumed that all points have same number of dimensions.
 # Euclidean dist between n-dimensional points a and b: 
