@@ -20,14 +20,16 @@ from scurve import zorder #
 # These should come from a file at some point.
 hypercube_edge_len = 1.0 #This shouldn't have an effect on outcome, but what if it does?
 order = 7 #Does this affect the outcome? How should I determine this?
-dimension = 4
+dimension = 3
 distribution = 'uniform'
-point_counts = [100, 1000] #Point counts should be higher than core counts
+point_counts = [1000] #Point counts should be higher than core counts
 core_counts = [10, 100]
 mappings = ['hilbert', 'zorder']
 k_values = [2, 3] #for k nearest neighbor metrics
-nearness_percentages = [0.5, 0.10, 0.20, 0.50] #percentage of edge_len for near neighbor metrics
+nearness_percentages = [0.10, 0.20, 0.50] #percentage of edge_len for near neighbor metrics
 verbosity = 1
+measure_nn = True
+measure_scattered_core = True
 
 # DATA STRUCTURES
 # Coordinates for each point. Points are indices (implicitly).
@@ -204,9 +206,32 @@ def main():
 						nn_conservation_1D_stats[(point_count, map, percent_radius)] = (0, (None, None))
 
 				# LOOP: for each core count
-				for core_count in core_counts:
-					# Divide ordering into core_count chunks
-					chunk_size = len(ordering_1D)/core_count
+				if measure_scattered_core:
+					for core_count in core_counts:
+						# Divide ordering into core_count chunks
+						chunk_size = len(ordering_1D)/core_count
+						pivots = get_pivots(chunk_size, point_count)
+						for percent_radius in nearness_percentages:
+							scattered_core_counts = []
+							scc_denom = 0
+							for p in range(point_count):
+								used_cores = [0 for i in xrange(core_count)]
+								nns = near_neighbors[(point_count, p, percent_radius)]
+								#if len(nns) > 0:
+								for neighbor in nns:
+									index = ordering_1D.index(neighbor)
+									assigned_core = index/chunk_size
+								#	print index, assigned_core, "\n"
+									used_cores[assigned_core] = used_cores[assigned_core] or 1
+								scattered_core_counts.append(sum(used_cores))
+								scc_denom += 1
+							scc_average = sum(scattered_core_counts)/scc_denom
+							print "Average num cores/neighborhood ({4}, {0}, {1}, {3}): {2}".format(map, percent_radius, scc_average, core_count, point_count)
+
+
+
+
+
 		#       LOOP: for each nearest_neighbor counts
 		#         metric: % of knns that end up on the same core
 		#       END
@@ -235,6 +260,13 @@ def main():
 #   sqrt((a0-b0)^2 + (a1-b1)^2 + ... + (an-bn)^2)
 def euclidean_dist(a, b):
   return math.sqrt(math.fsum([math.pow(a[i]-b[i], 2) for i in range(len(a))]))
+
+def get_pivots(chunk, pc):
+	indices = []
+	count = 0 - chunk
+	while count <= pc:
+		count += chunk
+		indices.append(count)
 
 def printf_array(dimensions, labels, array):
 	# Make sure dimensions matches # labels
