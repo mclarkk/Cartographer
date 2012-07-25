@@ -328,8 +328,6 @@ def main():
 			final_stats[params] = (avg, var)
 		print "KNN: Averages/Variances over {0} runs:".format(runs)
 		printf_dict(final_stats)
-	
-
 
 
 # It is assumed that all points have same number of dimensions.
