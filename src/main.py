@@ -21,12 +21,12 @@ from scurve import zorder
 # These should come from a file at some point.
 hypercube_edge_len = 1.0 #This shouldn't have an effect on outcome, but what if it does?
 order = 7 #Does this affect the outcome? How should I determine this?
-dimension = 6
+dimension = 3
 distribution = 'uniform'
-point_counts = [1000] #Point counts should be higher than core counts
+point_counts = [500] #Point counts should be higher than core counts
 core_counts = [10, 100]
 mappings = ['hilbert', 'zorder']
-k_values = [100,500,999] #For k nearest neighbor metrics. Even nums are more accurate.
+k_values = [50, 100,200, 250, 300,] #400,500,600,700] #For k nearest neighbor metrics. Even nums are more accurate.
 nearness_percentages = [0.10, 0.20, 0.50] #Percentage of edge_len for near neighbor metrics
 verbosity = 3
 measure_nn = False
@@ -260,8 +260,8 @@ def main():
 							knns = k_nearest_neighbors[(point_count, point, k)]
 							knn_count_1D = 0
 							for neighbor in knns:
-								the_neighbor = [n for n in knns_1D if n==neighbor]
-								knn_count_1D += len(the_neighbor)
+								if neighbor in knns_1D:
+									knn_count_1D += 1
 							knn_conservation_1D[(point_count, point, map, k)] = knn_count_1D/float(k)
 							total_1D_sum += knn_count_1D 
 						
