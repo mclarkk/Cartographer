@@ -21,7 +21,7 @@ from scurve import zorder
 # These should come from a file at some point.
 hypercube_edge_len = 1.0 #This shouldn't have an effect on outcome, but what if it does?
 order = 7 #Does this affect the outcome? How should I determine this?
-dimension = 2
+dimension = 3
 distribution = 'uniform'
 point_counts = [1000] #Point counts should be higher than core counts
 core_counts = [10,100]
