@@ -24,10 +24,10 @@ order = 7 #Does this affect the outcome? How should I determine this?
 dimension = 3
 distribution = 'uniform'
 point_counts = [1000] #Point counts should be higher than core counts
-core_counts = [10,100]
+core_counts = [10]
 mappings = ['hilbert', 'zorder']
-k_values = [100,200,300,400,500,600,700,800,900] #For k nearest neighbor metrics. Even nums are more accurate.
-nearness_percentages = [0.10, 0.20, 0.50] #Percentage of edge_len for near neighbor metrics
+k_values = [5] #For k nearest neighbor metrics. Even nums are more accurate.
+nearness_percentages = [0.1, 0.2, 0.3, 0.5] #Percentage of edge_len for near neighbor metrics
 verbosity = 0
 runs = 10
 measure_nn = False
@@ -38,10 +38,10 @@ measure_knn_core = False
 
 # DATA STRUCTURES
 
-final_knn_averages = [] #knn_conservation_1D_stats indexed by run
+final_knn_averages = [] #knn_conservation_stats indexed by run
 final_nn_averages = []
 final_nn_core_averages = []
-#final_knn_core_averages = {}
+final_knn_core_averages = []
 #gauss parameters chosen such that 0<x<1 ~99% of the time
 gauss_mu = hypercube_edge_len/2
 gauss_sigma = (hypercube_edge_len/2)/3.0 # <x<1 ~99% of the time
@@ -64,34 +64,30 @@ def main():
 	max_pc = point_counts[-1]
 	max_knnc = k_values[-1]
 
-#OUTER LOOP FOR MULTIPLE RUNS
+	# OUTER LOOP FOR MULTIPLE RUNS
 	for run in range(runs):
 		print "Run {0}".format(run+1)
 		# Coordinates for each point. Points are indices (implicitly).
 		coordinates = []
-		# Dynamically drawn grid squares containing points. This is also how we'll 
-		# determine the curve order to use. Looks like it's quadtree time after all. 
-		# Sigh. Hack it for now.
+		# Dynamically drawn grid squares containin 
 		discretized_coords = [] 
-		nearness_radii = []
-		k_nearest_neighbors = {} #keys: (pc, point, k)
-		near_neighbors = {} #keys: (pc, point, radius)
-		knn_conservation_1D = {} # points x mappings x knncs
-		knn_conservation_1D_stats = {} #(point count, mapping, k value)
-		nn_conservation_1D = {} # points x mappings x nns
-		nn_conservation_1D_stats = {} #(point_count, mapping, radius) -> (avg, var)
-		#knn_conservation_cores = {} #[][][][] # points x mappings x knncs x cc
-		#knn_conservation_cores_stats = {} #[][][][] # points x mappings x knncs x cc
-		#nn_conservation_cores #[][][][] # points x mappings x nns x cc
-		#nn_conservation_cores_stats #[][][][] # points x mappings x nns x cc
+		k_nearest_neighbors = {} #(pc, point, k) -> [] of neighbors
+		near_neighbors = {} #(pc, point, radius) -> [] of neighbors
+		knn_conservation = {} #
+		knn_conservation_stats = {} #(point count, mapping, k value)
+		nn_conservation = {} #
+		nn_conservation_stats = {} #(point_count, mapping, radius) -> (avg, var)
+		knn_core_conservation = {} #
+		knn_core_conservation_stats = {} #
+		nn_core_conservation = {} #
+		nn_core_conservation_stats = {} #
 		# initialize distance matrix
 		distance_matrix = [[0 for j in xrange(max_pc)] for i in xrange(max_pc)]
 		prev_point_count = 0
-		
-		# LOOP: for each point count
+	
+		# BEGIN AN EXPERIMENT
 		for point_count in point_counts:
 		# generate point_count points (or add to existing), and fill in distance matrix as you go along.
-			#print "STARTING MATRIX\n"
 			for i in range(point_count-prev_point_count):
 				new_point = []
 				d_new_point = []
@@ -106,7 +102,7 @@ def main():
 					new_point.append(coord)
 					d_new_point.append(int(round(coord*100)))
 				coordinates.append(tuple(new_point))
-				# get the discretized coordinate. Will write algorithm later, hack for now.
+				# get the discretized coordinate.
 				discretized_coords.append(tuple(d_new_point))
 				# fill out distance matrix as you go
 				i_adj = i + prev_point_count
@@ -189,8 +185,8 @@ def main():
 								nns = near_neighbors[(point_count, point, percent_radius)]
 								nn_count = len(nns)
 								if nn_count == 0:
-									nn_conservation_1D[(point_count, point, map, percent_radius)] = (0, (None))
-									nn_conservation_1D_stats[(point_count, map, percent_radius)] = (0, (None))
+									nn_conservation[(point_count, point, map, percent_radius)] = (0, (None))
+									nn_conservation_stats[(point_count, map, percent_radius)] = (0, (None))
 								else:
 									#see how many near neighbors are within nns_count distance in 1D
 									nn_count_1D = 0.0
@@ -201,7 +197,7 @@ def main():
 										if dist <= nn_count:
 											nn_count_1D += 1
 									percentage = nn_count_1D/nn_count
-									nn_conservation_1D[(point_count, point, map, percent_radius)] = (nn_count, (percentage))
+									nn_conservation[(point_count, point, map, percent_radius)] = (nn_count, (percentage))
 									p_sum += percentage
 									n_sum += nn_count
 									points_with_neighbors += 1
@@ -209,39 +205,44 @@ def main():
 							if points_with_neighbors != 0:
 								p_average = p_sum/points_with_neighbors
 								n_average = n_sum/points_with_neighbors
-								variance_denom = 0.0
+								variance_numerator = 0.0
 								for point in range(point_count):
-									(nn_count, (percentage)) = nn_conservation_1D[(point_count, point, map, percent_radius)]				
+									(nn_count, (percentage)) = nn_conservation[(point_count, point, map, percent_radius)]				
 									if percentage != None:
 										difference = p_average - percentage
 										variance_numerator += (difference*difference)
 								variance = variance_numerator/points_with_neighbors
-								nn_conservation_1D_stats[(point_count, map, percent_radius)] = (n_average, (p_average, variance))
+								nn_conservation_stats[(point_count, map, percent_radius)] = (n_average, (p_average, variance))
 							else:
-								nn_conservation_1D_stats[(point_count, map, percent_radius)] = (0, (None, None))
+								nn_conservation_stats[(point_count, map, percent_radius)] = (0, (None, None))
 
-					# LOOP: for each core count
 					if measure_nn_core:
 						for core_count in core_counts:
 							# Divide ordering into core_count chunks
-							chunk_size = len(ordering_1D)/core_count
+							chunk_size = int(math.ceil(point_count/float(core_count)))
 							pivots = get_pivots(chunk_size, point_count)
+							# Find out how many cores a neighborhood gets scattered across
 							for percent_radius in nearness_percentages:
 								scattered_core_counts = []
 								scc_denom = 0
 								for p in range(point_count):
 									used_cores = [0 for i in xrange(core_count)]
 									nns = near_neighbors[(point_count, p, percent_radius)]
-									#if len(nns) > 0:
-									for neighbor in nns:
-										index = ordering_1D.index(neighbor)
-										assigned_core = index/chunk_size
-									#	print index, assigned_core, "\n"
-										used_cores[assigned_core] = used_cores[assigned_core] or 1
-									scattered_core_counts.append(sum(used_cores))
-									scc_denom += 1
-								scc_average = sum(scattered_core_counts)/scc_denom
-								print "Average num cores/neighborhood ({4}, {0}, {1}, {3}): {2}".format(map, percent_radius, scc_average, core_count, point_count)
+									if len(nns) != 0:
+										for neighbor in nns:
+											index = ordering_1D.index(neighbor)
+											assigned_core = index/chunk_size
+											if assigned_core < 0 or assigned_core >= core_count: #TEST
+												print index, assigned_core, core_count #TEST
+											used_cores[assigned_core] = used_cores[assigned_core] or 1
+										scattered_core_counts.append(sum(used_cores))
+										scc_denom += 1
+								if scc_denom != 0:
+									scc_average = sum(scattered_core_counts)/float(scc_denom)
+								else:
+									scc_average = None
+								nn_core_conservation_stats[(point_count, map, percent_radius, core_count)] = scc_average
+							#	print "Average num cores/neighborhood ({4}, {0}, {1}, {3}): {2}".format(map, percent_radius, scc_average, core_count, point_count)
 
 					if measure_knn:
 						for k in k_values:
@@ -252,17 +253,13 @@ def main():
 								p_index = ordering_1D.index(point)
 								if p_index < window_size/2: #k
 									lower = 0
-									#upper = 2*k + 1
 									upper = window_size
 								elif p_index > (point_count - window_size/2): #pc - 2k
 									lower = point_count - window_size
-							#		lower = point_count - (2*k + 1)
 									upper = point_count
 								else:
 									lower = p_index-(window_size/2)
 									upper = p_index+(window_size/2) + 1
-#								lower = p_index-k
-#								upper = p_index+k+1
 								knns_1D = ordering_1D[lower:upper]
 								# Is each n-space nearest neighbor a 1D nearest neighbor?
 								knns = k_nearest_neighbors[(point_count, point, k)]
@@ -270,38 +267,52 @@ def main():
 								for neighbor in knns:
 									if neighbor in knns_1D:
 										knn_count_1D += 1
-								knn_conservation_1D[(point_count, point, map, k)] = knn_count_1D/float(k)
+								knn_conservation[(point_count, point, map, k)] = knn_count_1D/float(k)
 								total_1D_sum += knn_count_1D 
 							
 							# Metric: Average and variance of above
 							average = total_1D_sum/(k*point_count)
 							variance_numerator = 0.0
 							for point in range(point_count):
-								percentage = knn_conservation_1D[(point_count, point, map, k)]				
+								percentage = knn_conservation[(point_count, point, map, k)]				
 								difference = average - percentage
 								variance_numerator += (difference*difference)
 							variance = variance_numerator/point_count
-							knn_conservation_1D_stats[(point_count, map, k)] = (average, variance)
+							knn_conservation_stats[(point_count, map, k)] = (average, variance)
 							
 				except Exception, e:
-					print e
+					import traceback
+					print traceback.format_exc()
 			prev_point_count = point_count
 		#Update your stats across runs
-		final_knn_averages.append(knn_conservation_1D_stats)
+		final_knn_averages.append(knn_conservation_stats)
+		final_knn_core_averages.append(knn_core_conservation_stats)
+		final_nn_averages.append(nn_conservation_stats)
+		final_nn_core_averages.append(nn_core_conservation_stats)
 		#Reporting
 		if measure_nn and verbosity >= 3 and point_count <= MAX_DISPLAY_C:			
 			print "1D conservation of near neighbors:\n(point count, point, map, radius) : (# of neighbors, percentage by point)\n",
-			printf_dict(nn_conservation_1D)
+			printf_dict(nn_conservation)
 		if measure_nn and verbosity >= 1:
 			print "Stats for 1D conservation of near neighbors:\n(point count, map, radius) : (Average # of neighbors, (average, variance))\n",
-			printf_dict(nn_conservation_1D_stats)
+			printf_dict(nn_conservation_stats)
+		if measure_nn_core and verbosity >= 1:
+			print "Stats for cores/neighborhood (near):\n(point count, map, radius, core count) : average\n",
+			printf_dict(nn_core_conservation_stats)
 		if measure_knn and verbosity >= 3 and point_count <= MAX_DISPLAY_C:
 			print "1D conservation of k nearest neighbors:\n(point count, point, map, k) : percentage by point\n",
-			printf_dict(knn_conservation_1D)
+			printf_dict(knn_conservation)
 		if measure_knn and verbosity >= 1:
 			print "Stats for 1D conservation of k nearest neighbors:\n(point count, map, k) : (average, variance)\n",
-			printf_dict(knn_conservation_1D_stats)
+			printf_dict(knn_conservation_stats)
+		if measure_knn_core and verbosity >= 1:
+			print "Stats for cores/neighborhood (k nearest):\n(point count, map, k, core count) : average\n",
+			printf_dict(knn_core_conservation_stats)
 	#Now that you have the performances for each run, average the runs together!
+	if verbosity >= 1:
+		print "FINAL REPORT:"
+	print "\n",
+	# Average knn conservation across runs
 	if measure_knn:
 		sums = {}
 		averages = {}
@@ -326,9 +337,92 @@ def main():
 			avg = averages[params]
 			var = v_sum/runs
 			final_stats[params] = (avg, var)
-		print "KNN: Averages/Variances over {0} runs:".format(runs)
+		print "Averages/Variances of k-nearest neighbor conservation over {0} runs:".format(runs)
 		printf_dict(final_stats)
-
+	# Average nn conservation across runs
+	if measure_nn:
+		sums = {}
+		averages = {}
+		v_sums = {}
+		final_stats = {} #params => average, variance
+		valid_runs = {}
+		for r in range(runs):
+			nn_averages = final_nn_averages[r]
+			for params, stats in nn_averages.iteritems():
+				if r==0:
+					sums[params] = 0
+					valid_runs[params] = 0
+				a = stats[1][0] #the average for those params that run
+				if a == None:
+					a = 0
+				else:
+					valid_runs[params] += 1
+				sums[params] += a
+		for params, total in sums.iteritems():
+			if valid_runs[params] == 0:
+				averages[params] = None
+			else:
+				averages[params] = total/valid_runs[params]
+		for r in range(runs):
+			nn_averages = final_nn_averages[r]
+			for params, stats in nn_averages.iteritems():
+				if r==0:
+					v_sums[params] = 0
+				a = stats[1][0]
+				average_a = averages[params]
+				if a != None and average_a != None:
+					difference = a - average_a
+					v_sums[params] += difference*difference
+		for params, v_sum in v_sums.iteritems():
+			avg = averages[params]
+			if valid_runs[params] == 0:
+				var = None
+			else:
+				var = v_sum/valid_runs[params]
+			final_stats[params] = (avg, var)
+		print "Averages/Variances of near neighbor conservation over {0} runs:".format(runs)
+		printf_dict(final_stats)
+	# Average cores/neighborhood (nn) across runs
+	if measure_nn_core:
+		sums = {}
+		averages = {}
+		v_sums = {}
+		final_stats = {} #params => average, variance
+		valid_runs = {}
+		for r in range(runs):
+			nn_core_averages = final_nn_core_averages[r]
+			for params, average in nn_core_averages.iteritems():
+				if r==0:
+					sums[params] = 0
+					valid_runs[params] = 0
+				if average == None:
+					average = 0
+				else:
+					valid_runs[params] += 1
+				sums[params] += average
+		for params, total in sums.iteritems():
+			if valid_runs[params] == 0:
+				averages[params] = None
+			else:
+				averages[params] = total/valid_runs[params]
+		for r in range(runs):
+			nn_core_averages = final_nn_core_averages[r]
+			for params, a in nn_core_averages.iteritems():
+				if r==0:
+					v_sums[params] = 0
+				average_a = averages[params]
+				if a != None and average_a != None:
+					difference = a - average_a
+					v_sums[params] += difference*difference
+		for params, v_sum in v_sums.iteritems():
+			avg = averages[params]
+			if valid_runs[params] == 0:
+				var = None
+			else:
+				var = v_sum/valid_runs[params]
+			final_stats[params] = (avg, var)
+		print "Averages/Variances of cores/neighborhood (near) over {0} runs:".format(runs)
+		printf_dict(final_stats)
 
 # It is assumed that all points have same number of dimensions.
 # Euclidean dist between n-dimensional points a and b: 
