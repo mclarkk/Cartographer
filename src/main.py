@@ -20,25 +20,25 @@ from scurve import zorder
 # Get batch parameters
 # These should come from a file at some point.
 hypercube_edge_len = 1.0 #This shouldn't have an effect on outcome, but what if it does?
-order = 7 #Does this affect the outcome? How should I determine this?
-dimension = 3
-distribution = 'uniform'
-point_counts = [1000] #Point counts should be higher than core counts
-core_counts = [10]
+order = 7 #Curve order/bits used. Used math (magic) to determine.
 mappings = ['hilbert', 'zorder']
-k_values = [5] #For k nearest neighbor metrics. Even nums are more accurate.
-nearness_percentages = [0.1, 0.2, 0.3, 0.5] #Percentage of edge_len for near neighbor metrics
+dimension = 2
+distribution = 'gauss'
+point_counts = [1000] #Point counts should be higher than core counts
+core_counts = [10] #For cores-per-neighborhood metrics.
+k_values = [4] #For k nearest neighbor metrics. Even nums are more accurate.
+nearness_percentages = [0.01, 0.05, 0.1] #Proportion of edge_len for near neighbor metrics
 verbosity = 0
 runs = 10
-measure_nn = False
+measure_nn = True
 measure_nn_core = False
-measure_knn = True
+measure_knn = False
 measure_knn_core = False
 
 
-# DATA STRUCTURES
+# GLOBAL DATA STRUCTURES
 
-final_knn_averages = [] #knn_conservation_stats indexed by run
+final_knn_averages = [] #conservation_stats indexed by run
 final_nn_averages = []
 final_nn_core_averages = []
 final_knn_core_averages = []
@@ -67,6 +67,8 @@ def main():
 	# OUTER LOOP FOR MULTIPLE RUNS
 	for run in range(runs):
 		print "Run {0}".format(run+1)
+
+		# RUN-SPECIFIC DATA STRUCTURES
 		# Coordinates for each point. Points are indices (implicitly).
 		coordinates = []
 		# Dynamically drawn grid squares containin 
@@ -85,7 +87,7 @@ def main():
 		distance_matrix = [[0 for j in xrange(max_pc)] for i in xrange(max_pc)]
 		prev_point_count = 0
 	
-		# BEGIN AN EXPERIMENT
+		# BEGIN RUN
 		for point_count in point_counts:
 		# generate point_count points (or add to existing), and fill in distance matrix as you go along.
 			for i in range(point_count-prev_point_count):
@@ -119,11 +121,12 @@ def main():
 				print
 			if verbosity >= 4 and point_count <= MAX_DISPLAY:
 				print 'Distance matrix ({0}x{0}):'.format(point_count)
-				printf_array(2, [""], distance_matrix) # TEST
+				printf_array(2, [""], distance_matrix)
 				print
 
 			for point in range(point_count):
-				dists_from = distance_matrix[point] #selects row of matrix
+				# Select a point's row in matrix
+				dists_from = distance_matrix[point]
 				# Get lists of near neighbors
 				for radius in nearness_radii:
 					percent_radius = radius/hypercube_edge_len
@@ -140,8 +143,7 @@ def main():
 				print "K nearest neighbors (point count, point, k):\n",
 				printf_dict(k_nearest_neighbors)
 				
-			#print "STARTING MAP\n"
-			# LOOP: for each mapping
+			# Now for each curve, map points to one dimension by ordering them by curve index.
 			for map in mappings:
 				try:
 					if map == 'hilbert':
@@ -156,7 +158,7 @@ def main():
 						if verbosity >= 2 and point_count < 20:
 							print "Hilbert ordering (by particle #):\n", ordering_1D, "\n"
 					elif map == 'zorder':
-						zmap = zorder.ZOrder(dimension, order) #must find a way to determine # of bits
+						zmap = zorder.ZOrder(dimension, order)
 						images_1D = [(zmap.index(list(c[1])), c[0]) for c in enumerate(discretized_coords)]
 						images_1D.sort()
 						if verbosity >= 3 and point_count <= MAX_DISPLAY_C:
@@ -167,14 +169,9 @@ def main():
 					else:
 						raise Exception("Map '{0}' not supported.\n".format(map))
 
-			#     LOOP: for each nearest_neighbor counts
-			#       metric: % of k nns within k steps in 1D ordering
-			#     END
-					
 					# Metric: % of near neighbors (nns) within <# nns> steps of given point in 1D ordering
 					if measure_nn:
 						for radius in nearness_radii:
-							#print "GETTING NN/POINT\n"
 							p_sum = 0.0
 							n_sum = 0.0
 							points_with_neighbors = 0.0
@@ -201,7 +198,7 @@ def main():
 									p_sum += percentage
 									n_sum += nn_count
 									points_with_neighbors += 1
-							# Metric: Average and variance of above
+							# Average and variance of above across all points
 							if points_with_neighbors != 0:
 								p_average = p_sum/points_with_neighbors
 								n_average = n_sum/points_with_neighbors
@@ -215,7 +212,8 @@ def main():
 								nn_conservation_stats[(point_count, map, percent_radius)] = (n_average, (p_average, variance))
 							else:
 								nn_conservation_stats[(point_count, map, percent_radius)] = (0, (None, None))
-
+					
+					# Metric: Average num. of cores per near neighbor neighborhood
 					if measure_nn_core:
 						for core_count in core_counts:
 							# Divide ordering into core_count chunks
@@ -242,8 +240,9 @@ def main():
 								else:
 									scc_average = None
 								nn_core_conservation_stats[(point_count, map, percent_radius, core_count)] = scc_average
-							#	print "Average num cores/neighborhood ({4}, {0}, {1}, {3}): {2}".format(map, percent_radius, scc_average, core_count, point_count)
 
+					
+					# Metric: % of k nearest neighbors (knns) of a given point that are also knns in 1D ordering
 					if measure_knn:
 						for k in k_values:
 							window_size = k+1
@@ -269,8 +268,7 @@ def main():
 										knn_count_1D += 1
 								knn_conservation[(point_count, point, map, k)] = knn_count_1D/float(k)
 								total_1D_sum += knn_count_1D 
-							
-							# Metric: Average and variance of above
+							# Average and variance of above across all points
 							average = total_1D_sum/(k*point_count)
 							variance_numerator = 0.0
 							for point in range(point_count):
@@ -283,12 +281,16 @@ def main():
 				except Exception, e:
 					import traceback
 					print traceback.format_exc()
+			
+			#Update point count so previously generated points are preserved within run
 			prev_point_count = point_count
-		#Update your stats across runs
+		
+		#Update stats across runs
 		final_knn_averages.append(knn_conservation_stats)
 		final_knn_core_averages.append(knn_core_conservation_stats)
 		final_nn_averages.append(nn_conservation_stats)
 		final_nn_core_averages.append(nn_core_conservation_stats)
+		
 		#Reporting
 		if measure_nn and verbosity >= 3 and point_count <= MAX_DISPLAY_C:			
 			print "1D conservation of near neighbors:\n(point count, point, map, radius) : (# of neighbors, percentage by point)\n",
@@ -308,6 +310,7 @@ def main():
 		if measure_knn_core and verbosity >= 1:
 			print "Stats for cores/neighborhood (k nearest):\n(point count, map, k, core count) : average\n",
 			printf_dict(knn_core_conservation_stats)
+	
 	#Now that you have the performances for each run, average the runs together!
 	if verbosity >= 1:
 		print "FINAL REPORT:"
