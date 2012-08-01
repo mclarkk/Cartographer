@@ -1,0 +1,28 @@
+load uniform_3_1000_h.ext
+hx = uniform_3_1000_h(:,1);
+hy = uniform_3_1000_h(:,2);
+he = uniform_3_1000_h(:,3);
+
+load uniform_3_1000_z.ext
+zx = uniform_3_1000_z(:,1);
+zy = uniform_3_1000_z(:,2);
+ze = uniform_3_1000_z(:,3);
+
+hold on
+
+plot(hx, hy, '-b.')
+%errorbar(hx,hy,he)
+plot(zx, zy, '-r.')
+%errorbar(zx,zy,ze)
+
+xlabel('Radius')
+ylabel('Proportion of near neighbors conserved')
+
+title({'Conservation of Near Neighbors versus Radius', 'Dim. 3, Uniform distribution, 1000 points'})
+
+hLegend = legend('Hilbert', 'Z-order', 'Location', '');
+hMarkers = findobj(hLegend,'type','line')
+set(hMarkers(1), 'Color','red');
+set(hMarkers(2), 'Color','red');
+
+hold off
