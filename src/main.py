@@ -19,7 +19,7 @@ from scurve import zorder
 
 # Get batch parameters
 # These should come from a file at some point.
-hypercube_edge_len = 1.0 #This shouldn't have an effect on outcome, but what if it does?
+hypercube_edge_len = 1.0 #Unit hypercube
 order = 7 #Curve order/bits used. Used math (magic) to determine.
 mappings = ['hilbert', 'zorder']
 dimension = 2
